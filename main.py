@@ -20,6 +20,35 @@ def end_is_valid(start_tpye, end, id, agent):  # 检查目的地合法性
                 return True
     return False
 
+def update_task_set(state):
+    status_dict = {
+        4: [1, 2],
+        5: [1, 3],
+        6: [2, 3],
+        7: [4, 5, 6],
+        8: [7],
+        9: [i for i in range(1, 8)]
+    }
+    start_set = {i: [] for i in range(1, 9)}  # 可选起点  TODO 起点冲突
+    end_set = {i: [] for i in range(1, 9)}  # 可选终点  TODO 终点冲突
+    for i in range(1, 1 + num_workbench):
+        wb_message = state[i]
+        type_bench = int(wb_message[0])
+        if wb_message[-1] == '1':
+            start_set[type_bench].append(i)
+        if type_bench > 3:
+            product_status = int(wb_message[-2])
+            for j in status_dict[type_bench]:
+                if product_status & (1 << j) == 0:
+                    end_set[j].append(i)
+
+    # sys.stderr.write("起点栏展示\n") for debug
+    # for k, v in start_set.items():
+    #     sys.stderr.write(str(k) + " ".join(str(v)) + "\n")
+    return start_set, end_set
+
+def distance_computed(x1, x2, y1, y2):
+    return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
 class Agent():
     def __init__(self, id):
@@ -71,6 +100,7 @@ class Agent():
                 self.task[0] = -1
                 self.task[2] = -1
                 self.adopt_action([[3]])
+                task_table[self.id] = [-1, -1]
         return not start and int(self.pos_workbench_id) == int(tar_id)
 
     # 计算偏航角
@@ -97,6 +127,7 @@ class Agent():
         self.task = [task_type, start, end]
         return
 
+task_table = [[-1, -1] for _ in range(4)]  # 正在执行的任务等级表
 
 if __name__ == '__main__':
     # 初始化工作台  每个工作台的位置都是独一无二的
@@ -134,50 +165,53 @@ if __name__ == '__main__':
                 agent[i].set_state(state[i - 4][0], state[i - 4][7], state[i - 4][8], state[i - 4][9])
 
             # 任务栏更新
-            status_dict ={
-                4: [1, 2],
-                5: [1, 3],
-                6: [2, 3],
-                7: [4, 5, 6],
-                8: [7],
-                9: [i for i in range(1, 8)]
-            }
-            start_set = {i: [] for i in range(1, 9)}  # 可选起点
-            end_set = {i: [] for i in range(1, 9)}  # 可选终点
-            for i in range(1, 1 + num_workbench):
-                wb_message = state[i]
-                type_bench = int(wb_message[0])
-                if wb_message[-1] == '1':
-                    start_set[type_bench].append(i)
-                if type_bench > 3:
-                    product_status = int(wb_message[-2])
-                    for j in status_dict[type_bench]:
-                        if product_status & (1 << j) == 0:
-                            end_set[j].append(i)
-
-            # sys.stderr.write("起点栏展示\n")
-            # for k, v in start_set.items():
-            #     sys.stderr.write(str(k) + " ".join(str(v)) + "\n")
+            start_set, end_set = update_task_set(state)
 
             # 任务确定
             for id in range(4):
+                # sys.stderr.write(" ".join(str(task_table[id])) + " ")
                 if sum(agent[id].task) == -3:  # 智能体空闲，进行任务分配
                     # 分配任务 前往指定地点
                     # 起点选择  倒序 优先选取贵重的物资 重点改进的地方
                     task_type, start, end = -1, -1, -1
-                    for i in range(7, 0, -1):  # state[start_set[i][-1]][0]  #
-                        while end_set[i] != [] and end_is_valid(i, end_set[i][-1], id, agent):  # 满足某个条件
-                            end_set[i].pop()
+                    for i in range(7, 0, -1):  # state[start_set[i][-1]][0]  # 运输产品i 的选择为优先级确定
+                        # i 的选择为优先级确定
+
+                        tmp = end_set[i].copy()
+                        # sys.stderr.write(str(len(end_set[i])) + "_")
+                        for j in tmp:
+                            if [i, j] in task_table:
+                                # sys.stderr.write("\n" + "remove :" + str(i) + "_" + str(j) + "\n")
+                                end_set[i].remove(j)
+                                # if end_set[i] != []:
+                                #     sys.stderr.write(" ".join(str(end_set[i])) + "_")
+                        # sys.stderr.write(str(len(end_set[i])) + "_")
                         if start_set[i] != [] and end_set[i] != []:
+                            # 筛选
                             task_type = i
-                            start = start_set[i].pop()
-                            end = end_set[i].pop()
+                            distance_A = 200
+                            distance_B = 200
+                            for s in start_set[i]:
+                                tmp = distance_computed(agent[id].x, agent[id].y, float(state[s][1]), float(state[s][2]))
+                                if tmp < distance_A:
+                                    # 记录
+                                    distance_A = tmp
+                                    start = s
+                            for e in end_set[i]:
+                                tmp = distance_computed(float(state[start][1]), float(state[start][2]), float(state[e][1]), float(state[e][2]))
+                                if tmp < distance_B:
+                                    distance_B = tmp
+                                    end = e
+                            task_table[id] = [i, end]
+                            start_set[i].remove(start)
+                            end_set[i].remove(end)
                             break
                     agent[id].set_task(task_type, start, end)
                 if agent[id].task[1] != -1:
                     agent[id].go_to_workbench(agent[id].task[1], state[agent[id].task[1]][1:3], start=True)
                 elif agent[id].task[2] != -1:
                     agent[id].go_to_workbench(agent[id].task[2], state[agent[id].task[2]][1:3])
+            # sys.stderr.write("\n")
             # sys.stderr.write(" ".join(str(agent[0].task)) + "\n")
 
             print('OK')  # 当前帧控制指令结束，输出OK
