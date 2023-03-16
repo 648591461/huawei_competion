@@ -39,8 +39,9 @@ def update_task_set(state):
         if type_bench > 3:
             product_status = int(wb_message[-2])
             for j in status_dict[type_bench]:
-                if product_status & (1 << j) == 0:
-                    end_set[j].append(i)
+                if [j, i] not in task_table:
+                    if product_status & (1 << j) == 0:
+                        end_set[j].append(i)
 
     # sys.stderr.write("起点栏展示\n") for debug
     # for k, v in start_set.items():
@@ -50,6 +51,9 @@ def update_task_set(state):
 def distance_computed(x1, x2, y1, y2):
     return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
 class Agent():
     def __init__(self, id):
         self.id = id
@@ -57,7 +61,7 @@ class Agent():
         self.x = 0.
         self.y = 0.
         self.orient = 0.
-        self.task = [-1, -1, -1] # 计划运输产品类型， 起点工作台, 终点工作台
+        self.task = [-1, -1, -1]  # 计划运输产品类型， 起点工作台, 终点工作台
         self.action_dict = {  # 字典转换表
         0: 'forward',
         1: 'rotate',
@@ -65,6 +69,9 @@ class Agent():
         3: 'sell',
         4: 'destroy'
     }
+        self.distance_pid = PIDController(10, 0.1, 0.01, 0, dt=1, MAX=6., MIN=-2.)
+        self.angle_pid = PIDController(2, 0.1, 0.1, 0, dt=1, MAX=np.pi, MIN=-np.pi)
+
     def adopt_action(self, actions):
         # 动作执行
         for i in range(len(actions)):
@@ -78,21 +85,26 @@ class Agent():
         tar_x, tar_y = float(tar_workbench[0]), float(tar_workbench[1])
         # 计算偏航角
         yaw = self.clc_yaw(tar_x - self.x, tar_y - self.y)
-        # 如果偏航角 > 3/200 * PI 减速 最大速转向
+        distance = distance_computed(self.x, tar_x, self.y, tar_y)
+        # omega = self.angle_pid.update(yaw)
+        # omega = sigmoid(omega)
+        # angular_speed_range = 2 * np.pi
+        # omega = angular_speed_range * omega - np.pi
+        v = min(distance / 1.5, 1) * self.distance_pid.update(distance, 1 - abs(yaw) / np.pi)
+        # self.adopt_action([[1, omega], [0, v]])
+        # sys.stderr.write(str(self.id) + " " + str(yaw) + " " + str(omega) +  "   "  + str(v)  + "\n")
+
+        # # 如果偏航角 > 3/200 * PI 减速 最大速转向
         if yaw > 3 * np.pi / 200:
-            # 调整角度
-            self.adopt_action([[1, 4]])
-            # 减速
-            self.adopt_action([[0, 9999]])
-        # 如果偏航角 < 3/200 * PI 加速 微调转向
+            self.adopt_action([[1, np.pi], [0, v]])
         else:
-            # 调整角度
-            self.adopt_action([[1, yaw / 0.15]])
-            # 前进四！
-            self.adopt_action([[0, 9999]])
+            self.adopt_action([[1, yaw / 0.15], [0, v]])
 
         if int(self.pos_workbench_id) == int(tar_id):  # 到达目的地:
             # sys.stderr.write(str((self.pos_workbench_id)) + " " + str(tar_id) + "\n")
+            self.distance_pid.set_pid()
+            self.angle_pid.set_pid()
+            self.adopt_action([[0, 0]])
             if start:
                 self.task[1] = -1
                 self.adopt_action([[2]])
@@ -127,7 +139,32 @@ class Agent():
         self.task = [task_type, start, end]
         return
 
+class PIDController:
+    def __init__(self, Kp, Ki, Kd, setpoint, dt, MAX, MIN):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.setpoint = setpoint
+        self.dt = dt
+        self.error_sum = 0.
+        self.prev_error = 0.
+        self.MAX = MAX
+        self.MIN = MIN
+    def set_pid(self):
+        self.error_sum = 0.
+        self.prev_error = 0.
+    def update(self, error, K=1):
+        self.error_sum += error * self.dt
+        d_error = (error - self.prev_error) / self.dt
+
+        # PID output
+        output = self.Kp * error + self.Ki * self.error_sum + self.Kd * d_error
+        # if not ((output == self.MAX and error > 0) or (output == self.MIN and error < 0)):
+        #     self.error_sum += error * self.dt
+        self.prev_error = error
+        return K * max(min(output, self.MAX), self.MIN)
 task_table = [[-1, -1] for _ in range(4)]  # 正在执行的任务等级表
+
 
 if __name__ == '__main__':
     # 初始化工作台  每个工作台的位置都是独一无二的
@@ -169,22 +206,18 @@ if __name__ == '__main__':
 
             # 任务确定
             for id in range(4):
-                # sys.stderr.write(" ".join(str(task_table[id])) + " ")
+                # sys.stderr.write(" ".join(str(agent[id].task)) + " ")
                 if sum(agent[id].task) == -3:  # 智能体空闲，进行任务分配
                     # 分配任务 前往指定地点
                     # 起点选择  倒序 优先选取贵重的物资 重点改进的地方
                     task_type, start, end = -1, -1, -1
                     for i in range(7, 0, -1):  # state[start_set[i][-1]][0]  # 运输产品i 的选择为优先级确定
                         # i 的选择为优先级确定
-
-                        tmp = end_set[i].copy()
-                        # sys.stderr.write(str(len(end_set[i])) + "_")
-                        for j in tmp:
-                            if [i, j] in task_table:
-                                # sys.stderr.write("\n" + "remove :" + str(i) + "_" + str(j) + "\n")
-                                end_set[i].remove(j)
-                                # if end_set[i] != []:
-                                #     sys.stderr.write(" ".join(str(end_set[i])) + "_")
+                        # 防止终点冲突 已经改进
+                        # tmp = end_set[i].copy()
+                        # for j in tmp:
+                        #     if [i, j] in task_table:
+                        #         end_set[i].remove(j)
                         # sys.stderr.write(str(len(end_set[i])) + "_")
                         if start_set[i] != [] and end_set[i] != []:
                             # 筛选
