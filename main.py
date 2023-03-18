@@ -20,6 +20,7 @@ def end_is_valid(start_tpye, end, id, agent):  # 检查目的地合法性
                 return True
     return False
 
+
 def update_task_set(state):
     status_dict = {
         4: [1, 2],
@@ -29,30 +30,41 @@ def update_task_set(state):
         8: [7],
         9: [i for i in range(1, 8)]
     }
-    start_set = {i: [] for i in range(1, 9)}  # 可选起点  TODO 起点冲突
-    end_set = {i: [] for i in range(1, 9)}  # 可选终点  TODO 终点冲突
+    start_set = {i: [] for i in range(1, 10)}  # 可选起点  TODO 起点冲突
+    end_set = {i: [] for i in range(1, 10)}  # 可选终点  TODO 终点冲突
+    require_set = {i: [] for i in range(1, 10)}   # 工作台的工作需求状态登记表
+
     for i in range(1, 1 + num_workbench):
         wb_message = state[i]
         type_bench = int(wb_message[0])
         if wb_message[-1] == '1':
             start_set[type_bench].append(i)
         if type_bench > 3:
+            tmp = [i]
             product_status = int(wb_message[-2])
             for j in status_dict[type_bench]:
-                if [j, i] not in task_table:
+                if [j, i] not in task_table:  # 已经有产品在运输的路上了
                     if product_status & (1 << j) == 0:
                         end_set[j].append(i)
-
+                        tmp.append(j)
+            if len(tmp) > 1:
+                require_set[type_bench].append(tmp)
+    for i in range(1, 10):
+        if len(require_set[i]) > 1:
+            require_set[i].sort(key=lambda x: [-len(x[1:]), x[0]])
     # sys.stderr.write("起点栏展示\n") for debug
     # for k, v in start_set.items():
     #     sys.stderr.write(str(k) + " ".join(str(v)) + "\n")
-    return start_set, end_set
+    return start_set, end_set, require_set
+
 
 def distance_computed(x1, x2, y1, y2):
     return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
+
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
+
 
 class Agent():
     def __init__(self, id):
@@ -96,7 +108,7 @@ class Agent():
 
         # # 如果偏航角 > 3/200 * PI 减速 最大速转向
         if yaw > 3 * np.pi / 200:
-            self.adopt_action([[1, np.pi], [0, v]])
+            self.adopt_action([[1, np.pi], [0, 0.]])
         else:
             self.adopt_action([[1, yaw / 0.15], [0, v]])
 
@@ -139,6 +151,7 @@ class Agent():
         self.task = [task_type, start, end]
         return
 
+
 class PIDController:
     def __init__(self, Kp, Ki, Kd, setpoint, dt, MAX, MIN):
         self.Kp = Kp
@@ -163,7 +176,10 @@ class PIDController:
         #     self.error_sum += error * self.dt
         self.prev_error = error
         return K * max(min(output, self.MAX), self.MIN)
+
+
 task_table = [[-1, -1] for _ in range(4)]  # 正在执行的任务等级表
+
 
 
 if __name__ == '__main__':
@@ -185,6 +201,7 @@ if __name__ == '__main__':
     for k, v in workbench.items():
         cnt_workbench[k] = len(v)
     num_workbench = sum(cnt_workbench)  # 工作台总数
+    product_reservation_table = [i for i in range(1, num_workbench + 1)]  # 记录生产中的产品将运往那个工作台 主要针对4 5 6 [start, end] 订货制度
     print('OK')  # 输出OK 表示初始化结束
     sys.stdout.flush()  # 别忘了flush一下标准输出
     try:
@@ -192,7 +209,7 @@ if __name__ == '__main__':
             # 首先输出读入的第一个整数: 帧ID
             frame_id = input().split(' ')[0]
             print(frame_id)
-
+            # sys.stderr.write(frame_id + "\n")
             # 忽略其他输入数据，读到OK为止
             state = read_util_ok()
             # for i in range(len(state)):
@@ -202,44 +219,101 @@ if __name__ == '__main__':
                 agent[i].set_state(state[i - 4][0], state[i - 4][7], state[i - 4][8], state[i - 4][9])
 
             # 任务栏更新
-            start_set, end_set = update_task_set(state)
+            start_set, end_set, require_set = update_task_set(state)
 
             # 任务确定
-            for id in range(4):
+            for id in range(1):
                 # sys.stderr.write(" ".join(str(agent[id].task)) + " ")
                 if sum(agent[id].task) == -3:  # 智能体空闲，进行任务分配
                     # 分配任务 前往指定地点
                     # 起点选择  倒序 优先选取贵重的物资 重点改进的地方
                     task_type, start, end = -1, -1, -1
-                    for i in range(7, 0, -1):  # state[start_set[i][-1]][0]  # 运输产品i 的选择为优先级确定
-                        # i 的选择为优先级确定
-                        # 防止终点冲突 已经改进
-                        # tmp = end_set[i].copy()
-                        # for j in tmp:
-                        #     if [i, j] in task_table:
-                        #         end_set[i].remove(j)
-                        # sys.stderr.write(str(len(end_set[i])) + "_")
-                        if start_set[i] != [] and end_set[i] != []:
-                            # 筛选
-                            task_type = i
-                            distance_A = 200
-                            distance_B = 200
-                            for s in start_set[i]:
-                                tmp = distance_computed(agent[id].x, agent[id].y, float(state[s][1]), float(state[s][2]))
-                                if tmp < distance_A:
-                                    # 记录
-                                    distance_A = tmp
-                                    start = s
-                            for e in end_set[i]:
-                                tmp = distance_computed(float(state[start][1]), float(state[start][2]), float(state[e][1]), float(state[e][2]))
-                                if tmp < distance_B:
-                                    distance_B = tmp
-                                    end = e
-                            task_table[id] = [i, end]
-                            start_set[i].remove(start)
-                            end_set[i].remove(end)
-                            break
+                    # for i in range(7, 0, -1):  # state[start_set[i][-1]][0]  # 运输产品i 的选择为优先级确定
+                    #     # i 的选择为优先级确定
+                    #     # 防止终点冲突 已经改进
+                    #     # tmp = end_set[i].copy()
+                    #     # for j in tmp:
+                    #     #     if [i, j] in task_table:
+                    #     #         end_set[i].remove(j)
+                    #     # sys.stderr.write(str(len(end_set[i])) + "_")
+                    #     if start_set[i] != [] and end_set[i] != []:
+                    #         # 筛选
+                    #         task_type = i
+                    #         distance_A = 200
+                    #         distance_B = 200
+                    #         for s in start_set[i]:
+                    #             tmp = distance_computed(agent[id].x, agent[id].y, float(state[s][1]), float(state[s][2]))
+                    #             if tmp < distance_A:
+                    #                 # 记录
+                    #                 distance_A = tmp
+                    #                 start = s
+                    #         for e in end_set[i]:
+                    #             tmp = distance_computed(float(state[start][1]), float(state[start][2]), float(state[e][1]), float(state[e][2]))
+                    #             if tmp < distance_B:
+                    #                 distance_B = tmp
+                    #                 end = e
+                    #         task_table[id] = [i, end]
+                    #         start_set[i].remove(start)
+                    #         end_set[i].remove(end)
+                    #         break
+                    if start_set[7] != []:  # 7 -> 8/9
+                        start = start_set[7][-1]
+                        end = end_set[7][-1]
+                        task_type = 7
+                    else:
+                    #   # 检查缺什么
+                        require_table = require_set[7][-1]  # [id, require1, require2, require]
+                        while len(require_table) <= 1:
+                            require_set.pop()
+                            require_table = require_set[7][-1]
+                        # sys.stderr.write(" ".join(str(require_table)) + "\n")
+                    #
+                    #     # 检查有没有
+                        if sum([len(start_set[t]) for t in require_table[1:]]) > 0:  # 有的话 4 5 6 -> 7
+                            for i in range(len(require_table) - 1, 0, -1):  # TODO 可以优化一下 选择距离最近的哪一个
+                                if start_set[require_table[i]] != []:  # TODO 可以优化一下 选择距离最近的哪一个
+                                    start = start_set[require_table[i]][-1]
+                                    end = require_table[0]
+                                    task_type = require_table[i]
+                                    break
+                                # else:
+                                #     sys.stderr.write(
+                                #         "agent:" + str(id) + ":" + str(len(require_table) - 1) + ":" + str(
+                                #             i) + "\n")
+
+                        else:  # 没有的话 下一层 1 2 3 -> 4 5 6
+                            if int(frame_id) > 55:
+                                sys.stderr.write(" ".join(str(require_set)))  # TODO 6均在生产 无空槽 且工作台只差6 导致为空
+                                sys.stderr.write("初始化材料为" + str(require_table[1]))
+
+                            require_table_456 = require_set[require_table[1]][-1]  # 确定完成度最高的材料 [id, require1, require1]
+                            for require_type in reversed(require_table[1:]):  # 在缺的材料中遍历
+                                rt = require_set[require_type][-1]
+                                if len(rt) < len(require_table_456):
+                                    require_table_456 = rt
+                            # if int(frame_id) > 49:
+                            #     sys.stderr.write(str(id) + " ".join(str(require_table_456)) + "\n")
+                            for i in range(len(require_table_456) - 1, 0, -1):
+                                if start_set[require_table_456[i]] != []:
+                                    end = require_table_456[0]
+                                    start = start_set[require_table_456[i]][-1]
+                                    task_type = require_table_456[i]
+                                    break
+                                # else:
+                                #     sys.stderr.write("agent:" + str(id)  + ":" + str(len(require_table_456) - 1) + ":" + str(i) + "\n")
+                            # sys.stderr.write(str(len(require_table_456)) + "\n")
+
                     agent[id].set_task(task_type, start, end)
+                    if sum(agent[id].task) != -3:
+                        sys.stderr.write(" ".join(str(agent[id].task)) + "\n")
+                        task_table[id] = [task_type, end]
+                        start_set[task_type].remove(start)  # 防止任务冲突 这里是为了防止同时分配任务时，智能体的任务重复分配
+                        end_set[task_type].remove(end)  # 防止任务分配冲突
+                        # for key, value in require_set.items():
+                        #     sys.stderr.write(str(key) + " ".join(str(value)) + "\n")
+                        require_set[int(state[end][0])][-1].remove(task_type)  # 需求表也要进行跟新
+                        if len(require_set[int(state[end][0])][-1]) == 1:
+                            require_set[int(state[end][0])].pop()
                 if agent[id].task[1] != -1:
                     agent[id].go_to_workbench(agent[id].task[1], state[agent[id].task[1]][1:3], start=True)
                 elif agent[id].task[2] != -1:
