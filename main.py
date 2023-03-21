@@ -36,6 +36,7 @@ class Agent():
         self.pos_workbench_id = -1  # 所处工作台ID
         self.x = 0.
         self.y = 0.
+        self.v = 0.
         self.orient = 0.
         self.task = [-1, -1, -1]  # 计划运输产品类型， 起点工作台, 终点工作台
         self.action_dict = {  # 字典转换表
@@ -80,6 +81,8 @@ class Agent():
             self.adopt_action([[1, np.pi], [0, 0.]])
         else:
             self.adopt_action([[1, yaw / 0.15], [0, v]])
+        if int(self.pos_workbench_id) != int(tar_id) and self.v < 0.05:  # 防止堵塞
+            self.adopt_action([[1, np.pi], [0, 666]])
 
         if int(self.pos_workbench_id) == int(tar_id):  # 到达目的地:
             # sys.stderr.write(str((self.pos_workbench_id)) + " " + str(tar_id) + "\n")
@@ -87,14 +90,17 @@ class Agent():
             self.angle_pid.set_pid()
             self.adopt_action([[0, 0]])
             if start:
-                self.adopt_action([[2]])
+                if self.product_id == 0:
+                    self.adopt_action([[2]])
                 if self.task[0] > 3 or self.product_id != 0:
                     self.task[1] = -1
+                    task_take_table[self.id] = [-1, -1]
+
             else:
                 self.task[0] = -1
                 self.task[2] = -1
                 self.adopt_action([[3]])
-                task_table[self.id] = [-1, -1]
+                task_give_table[self.id] = [-1, -1]
         return not start and int(self.pos_workbench_id) == int(tar_id)
 
     # 计算偏航角
@@ -109,12 +115,13 @@ class Agent():
         return yaw
 
     # 状态更新
-    def set_state(self, pos_workbench_id, orient, x, y, product_id):  # 设置xy的坐标
+    def set_state(self, pos_workbench_id, orient, x, y, product_id, v_x, v_y):  # 设置xy的坐标
         self.pos_workbench_id = int(pos_workbench_id) + 1
         self.orient = float(orient)
         self.x = float(x)
         self.y = float(y)
         self.product_id = int(product_id)
+        self.v = float(np.sqrt(float(v_x) ** 2 + float(v_y) ** 2))
         return
 
     # 分配任务
@@ -139,13 +146,14 @@ class Agent():
         for i in self.range:
             wb_message = state[i]
             type_bench = int(wb_message[0])
-            if wb_message[-1] == '1':
-                start_set[type_bench].append(i)
+            if wb_message[-1] == '1':  # 解决起点冲突
+                if type_bench <= 3 or [type_bench, i] not in task_take_table:
+                    start_set[type_bench].append(i)
             if type_bench > 3:
                 tmp = [i]
                 product_status = int(wb_message[-2])
                 for j in status_dict[type_bench]:
-                    if [j, i] not in task_table:  # 已经有产品在运输的路上了
+                    if [j, i] not in task_give_table:  # 已经有产品在运输的路上了
                         if product_status & (1 << j) == 0:
                             end_set[j].append(i)
                             tmp.append(j)
@@ -189,16 +197,43 @@ class PIDController:
         self.prev_error = error
         return K * max(min(output, self.MAX), self.MIN)
 
-task_table = [[-1, -1] for _ in range(4)]  # 正在执行的任务等级表
-test_workbench = [[1, 2, 3, 4, 5, 9, 10, 11, 14, 15, 16],
-                  [4, 5, 6, 7, 8, 9, 12, 13, 14, 16, 17],
-                  [15, 16, 18, 19, 20, 23, 24, 25, 26, 27, 28],
-                  [16, 17, 18, 21, 22, 23, 27, 28, 29, 30, 31]]
+task_give_table = [[-1, -1] for _ in range(4)]  # 送料表
+task_take_table = [[-1, -1] for _ in range(4)]  # 取料表
+TEST_WORKBRNCH = {
+                1:
+                    [[1, 2, 3, 4, 5, 9, 10, 11, 14, 15, 16],
+                    [4, 5, 6, 7, 8, 9, 12, 13, 14, 16, 17],
+                    [15, 16, 18, 19, 20, 23, 24, 25, 26, 27, 28],
+                    [16, 17, 18, 21, 22, 23, 27, 28, 29, 30, 31]],
+                2:
+                    [[1, 2, 3, 10, 11, 12, 13, 14, 15, 16, 17],
+                    [4, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17],
+                    [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+                    [1, 2, 3, 10, 11, 12, 13, 14, 15, 16, 17]],
+                3:
+                    [[1, 6, 7, 8],
+                    [1, 6, 7, 8],
+                    [1, 9, 10, 11],
+                    [1, 9, 10, 11]]}
+
 # 初始目的地
-initial_task = [[2, 10, 9],
-                [3, 13, 9],
-                [2, 19, 23],
-                [3, 22, 23]]
+INITIAL_TASK = {
+                1:
+                    [[2, 10, 9],
+                    [3, 13, 9],
+                    [2, 19, 23],
+                    [3, 22, 23]],
+                2:
+                    [[3, 3, 11],
+                    [3, 5, 13],
+                    [3, 5, 14],
+                    [2, 2, 11]],
+                3:
+                    [[1, 2, 7],
+                     [2, 3, 8],
+                     [2, 15, 11],
+                     [3, 17, 11]]
+}
 
 
 if __name__ == '__main__':
@@ -220,12 +255,25 @@ if __name__ == '__main__':
     for k, v in workbench.items():
         cnt_workbench[k] = len(v)
     num_workbench = sum(cnt_workbench)  # 工作台总数
+    if num_workbench == 31:  ## 判断是哪一张地图
+        test_workbench = TEST_WORKBRNCH[1]
+        initial_task = INITIAL_TASK[1]
+        END8 = 16
+    elif num_workbench == 17:
+        test_workbench = TEST_WORKBRNCH[2]
+        initial_task = INITIAL_TASK[2]
+        END8 = 17
+    else:
+        test_workbench = TEST_WORKBRNCH[3]
+        initial_task = INITIAL_TASK[3]
+        END8 = 12
     # source_designation_table = {i: {} for i in range(num_workbench)}
     product_reservation_table = [i for i in range(1, num_workbench + 1)]  # 记录生产中的产品将运往那个工作台 主要针对4 5 6 [start, end] 订货制度
     for id in range(4):
         agent[id].update_range(test_workbench[id])  # 负责区域分配
         agent[id].set_task(initial_task[id][0], initial_task[id][1], initial_task[id][2])
-        task_table[id] = [initial_task[id][0], initial_task[id][2]]
+        task_give_table[id] = [initial_task[id][0], initial_task[id][2]]
+        task_take_table[id] = [initial_task[id][0], initial_task[id][1]]
     print('OK')  # 输出OK 表示初始化结束
     sys.stdout.flush()  # 别忘了flush一下标准输出
     try:
@@ -239,9 +287,13 @@ if __name__ == '__main__':
             # for i in range(len(state)):
             #     sys.stderr.write(" ".join(state[i]) + "\n")
             for id in range(4):
-                agent[id].set_state(state[id - 4][0], state[id - 4][7], state[id - 4][8], state[id - 4][9], state[id - 4][1])  # 更新 agent的坐标信息
+                if sum(agent[id].task) != -3:
+                    task_give_table[id] = [agent[id].task[0], agent[id].task[2]]
+                if agent[id].task[1] != -1:
+                    task_take_table[id] = [agent[id].task[0], agent[id].task[1]]
+            for id in range(4):
+                agent[id].set_state(state[id - 4][0], state[id - 4][7], state[id - 4][8], state[id - 4][9], state[id - 4][1], state[id - 4][5], state[id - 4][6])  # 更新 agent的坐标信息
                 agent[id].update_task_set(state)  # 任务栏更新
-
             # 任务确定
             for id in range(4):
                 # sys.stderr.write(" ".join(str(agent[id].task)) + " ")
@@ -252,7 +304,7 @@ if __name__ == '__main__':
 
                     if agent[id].start_set[7] != []:  # 7 -> 8/9
                         start = agent[id].start_set[7][-1]
-                        end = 16
+                        end = END8
                         task_type = 7
                     else:
                     # 检查缺什么
@@ -262,7 +314,6 @@ if __name__ == '__main__':
                                     end = agent[id].end_set[i][-1]
                                     start = agent[id].start_set[i][-1]
                                     task_type = i
-
                         else:
                             require_table = agent[id].require_set[7][-1]  # [id, require1, require2, require]
                             while len(require_table) <= 1:
@@ -302,7 +353,7 @@ if __name__ == '__main__':
                                     distance_A = 250
                                     # sys.stderr.write(" ".join(str(require_table_456[-1])) + "\n")
                                     # sys.stderr.write("Agent_id:" + str(id) + " ".join(str(workbench[require_table_456[-1]])) + "\n")
-                                    for i in range(len(workbench[require_table_456[-1]])):
+                                    for i in range(len(workbench[require_table_456[-1]])):  # 需要划定范围
                                         s = workbench[require_table_456[-1]][i][0]
                                         tmp = distance_computed(float(state[s][1]), float(state[require_table_456[0]][1]),
                                                                 float(state[s][2]), float(state[require_table_456[0]][2]))
@@ -312,11 +363,7 @@ if __name__ == '__main__':
                                     if start != -1:
                                         end = require_table_456[0]
                                         task_type = require_table_456[-1]
-
-
                     agent[id].set_task(task_type, start, end)
-                    if sum(agent[id].task) != -3:
-                        task_table[id] = [task_type, end]
                 if agent[id].task[1] != -1:
                     agent[id].go_to_workbench(agent[id].task[1], state[agent[id].task[1]][1:3], start=True)
                 elif agent[id].task[2] != -1:
