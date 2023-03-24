@@ -211,10 +211,10 @@ TEST_WORKBRNCH = {
                     [23, 24, 25, 22],
                     [23, 24, 25, 22, 13]],
                 3:
-                    [[12, 13, 14, 15, 21, 23, 24],
+                    [[12, 13, 14, 15, 21, 23, 24, 17, 22, 29],
                     [23, 24, 26, 30, 33, 34, 35],
-                    [12, 13, 14, 15, 21, 23, 24, 17],
-                    [23, 24, 26, 30, 33, 34, 35, 29]],
+                    [12, 13, 14, 15, 21, 23, 24, 17, 22, 29],
+                    [12, 13, 14, 15, 21, 23, 24, 26, 30, 33, 34, 35, 29]],
                 4:
                     [[12, 14, 16, 18],
                      [11, 13, 15, 18],
@@ -248,7 +248,7 @@ INITIAL_TASK = {
 
 FLAG7_TABLE = [[0, 0, 0, 1],
                [0, 1, 0, 1],
-               [0, 0, -1, -1],
+               [-1, -1, -1, -1],
                [0, 0, 1, 1]]  # 用于决定是否切换工作模式
 if __name__ == '__main__':
     # 初始化工作台  每个工作台的位置都是独一无二的
@@ -404,13 +404,31 @@ if __name__ == '__main__':
                             end = require_table[0]
                             task_type = require_table[-1]
                     elif FLAG7[id] == -1:  # 工作模式3 专注送货
-                        for i in range(7, 0, -1):
-                            if agent[id].start_set[i] != []:
-                                start = agent[id].start_set[i][-1]
-                                task_type = i
-                                end = 25  # map3
-                                break
-
+                        # 首先检查是否出货 出货则送货
+                        pos = agent[id].pos_workbench_id
+                        if state[pos][-1] == '1':
+                            start = pos
+                            end = 25
+                            task_type = int(state[pos][0])
+                        else:  # 没有6
+                            # 专注自身的工作台  目前只针对地图1的编写
+                            for i in range(7, 0, -1):
+                                if agent[id].require_set[i] != []:
+                                    require_table = agent[id].require_set[i][-1]
+                                    break
+                            distance_A = 250
+                            # sys.stderr.write(" ".join(str(require_table_456[-1])) + "\n")
+                            # sys.stderr.write("Agent_id:" + str(id) + " ".join(str(workbench[require_table_456[-1]])) + "\n")
+                            for i in range(len(workbench[require_table[-1]])):  # 需要划定范围
+                                s = workbench[require_table[-1]][i][0]
+                                tmp = distance_computed(float(state[s][1]), float(state[require_table[0]][1]),
+                                                        float(state[s][2]), float(state[require_table[0]][2]))
+                                if tmp < distance_A:
+                                    distance_A = tmp
+                                    start = s
+                            if start != -1:
+                                end = require_table[0]
+                                task_type = require_table[-1]
                     agent[id].set_task(task_type, start, end)
                 if agent[id].task[1] != -1:
                     agent[id].go_to_workbench(agent[id].task[1], state[agent[id].task[1]][1:3], start=True)
