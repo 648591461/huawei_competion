@@ -52,7 +52,7 @@ class Agent():
         self.end_set = {i: [] for i in range(1, 10)}  # 可选终点  TODO 终点冲突
         self.require_set = {i: [] for i in range(1, 10)}  # 工作台的工作需求状态登记表
         self.range = []  # 智能体负责的工作台
-        self.product_id = 0 # 携带的物品类型
+        self.product_id = 0  # 携带的物品类型
 
     def adopt_action(self, actions):
         # 动作执行
@@ -201,46 +201,59 @@ task_give_table = [[-1, -1] for _ in range(4)]  # 送料表
 task_take_table = [[-1, -1] for _ in range(4)]  # 取料表
 TEST_WORKBRNCH = {
                 1:
-                    [[1, 2, 3, 4, 5, 9, 10, 11, 14, 15, 16],
-                    [4, 5, 6, 7, 8, 9, 12, 13, 14, 16, 17],
-                    [15, 16, 18, 19, 20, 23, 24, 25, 26, 27, 28],
-                    [16, 17, 18, 21, 22, 23, 27, 28, 29, 30, 31]],
+                    [[20, 21, 27, 28, 11, 12, 13, 16, 18, 22, 23, 24],
+                    [4, 8, 9, 14, 11, 12, 13, 16, 18, 22, 23, 24],
+                    [32, 33, 39, 40, 11, 12, 13, 16, 18, 22, 23, 24],
+                    [32, 33, 39, 40, 4, 8, 9, 14, 11, 20, 21, 27, 28, 11, 12, 13]],
                 2:
-                    [[1, 2, 3, 10, 11, 12, 13, 14, 15, 16, 17],
-                    [4, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17],
-                    [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
-                    [1, 2, 3, 10, 11, 12, 13, 14, 15, 16, 17]],
+                    [[1, 2, 3, 4],
+                    [1, 2, 3, 4, 13],
+                    [23, 24, 25, 22],
+                    [23, 24, 25, 22, 13]],
                 3:
-                    [[1, 6, 7, 8],
-                    [1, 6, 7, 8],
-                    [1, 9, 10, 11],
-                    [1, 9, 10, 11]]}
+                    [[12, 13, 14, 15, 21, 23, 24],
+                    [23, 24, 26, 30, 33, 34, 35],
+                    [12, 13, 14, 15, 21, 23, 24, 17],
+                    [23, 24, 26, 30, 33, 34, 35, 29]],
+                4:
+                    [[12, 14, 16, 18],
+                     [11, 13, 15, 18],
+                     [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 18],
+                     [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 18]]
+}
 
 # 初始目的地
 INITIAL_TASK = {
                 1:
-                    [[2, 10, 9],
-                    [3, 13, 9],
-                    [2, 19, 23],
-                    [3, 22, 23]],
+                    [[2, 42, 32],
+                    [3, 43, 14],
+                    [3, 43, 32],
+                    [1, 1, 14]],
                 2:
-                    [[3, 3, 11],
-                    [3, 5, 13],
-                    [3, 5, 14],
-                    [2, 2, 11]],
+                    [[3, 9, 3],
+                    [3, 8, 1],
+                    [3, 17, 23],
+                    [3, 18, 25]],
                 3:
-                    [[1, 2, 7],
-                     [2, 3, 8],
-                     [2, 15, 11],
-                     [3, 17, 11]]
+                    [[2, 17, 23],
+                     [3, 29, 23],
+                     [3, 29, 25],
+                     [2, 17, 25]],
+                4:
+                    [[3, 8, 14],
+                     [3, 10, 16],
+                     [1, 3, 18],
+                     [2, 6, 18]]
 }
 
-
+FLAG7_TABLE = [[0, 0, 0, 1],
+               [0, 1, 0, 1],
+               [0, 0, -1, -1],
+               [0, 0, 1, 1]]  # 用于决定是否切换工作模式
 if __name__ == '__main__':
     # 初始化工作台  每个工作台的位置都是独一无二的
     workbench = {i: [] for i in range(1, 10)}  # 工作台坐标
     cnt_workbench = [0 for i in range(10)]  # 同种类工作台数量记录
-
     # 初始化智能体
     agent = [Agent(id) for id in range(4)]
     # 获取地图
@@ -255,18 +268,26 @@ if __name__ == '__main__':
     for k, v in workbench.items():
         cnt_workbench[k] = len(v)
     num_workbench = sum(cnt_workbench)  # 工作台总数
-    if num_workbench == 31:  ## 判断是哪一张地图
+    if num_workbench == 43:  # 地图1
         test_workbench = TEST_WORKBRNCH[1]
         initial_task = INITIAL_TASK[1]
-        END8 = 16
-    elif num_workbench == 17:
+        END8 = 17
+        FLAG7 = FLAG7_TABLE[0]
+    elif num_workbench == 25:  # 地图2
         test_workbench = TEST_WORKBRNCH[2]
         initial_task = INITIAL_TASK[2]
-        END8 = 17
-    else:
+        END8 = 11
+        FLAG7 = FLAG7_TABLE[1]
+    elif num_workbench == 50:  # 地图3
         test_workbench = TEST_WORKBRNCH[3]
         initial_task = INITIAL_TASK[3]
-        END8 = 12
+        END8 = 11
+        FLAG7 = FLAG7_TABLE[2]
+    else:
+        test_workbench = TEST_WORKBRNCH[4]
+        initial_task = INITIAL_TASK[4]
+        END8 = 17
+        FLAG7 = FLAG7_TABLE[3]
     # source_designation_table = {i: {} for i in range(num_workbench)}
     product_reservation_table = [i for i in range(1, num_workbench + 1)]  # 记录生产中的产品将运往那个工作台 主要针对4 5 6 [start, end] 订货制度
     for id in range(4):
@@ -298,71 +319,98 @@ if __name__ == '__main__':
             for id in range(4):
                 # sys.stderr.write(" ".join(str(agent[id].task)) + " ")
                 if sum(agent[id].task) == -3:  # 智能体空闲，进行任务分配
-                    # 分配任务 前往指定地点
-                    # 起点选择  倒序 优先选取贵重的物资 重点改进的地方
-                    task_type, start, end = -1, -1, -1
+                    if FLAG7[id] == 1:  # 工作模式1: 需求优先
+                        # 分配任务 前往指定地点
+                        # 起点选择  倒序 优先选取贵重的物资 重点改进的地方
+                        task_type, start, end = -1, -1, -1
 
-                    if agent[id].start_set[7] != []:  # 7 -> 8/9
-                        start = agent[id].start_set[7][-1]
-                        end = END8
-                        task_type = 7
-                    else:
-                    # 检查缺什么
-                        if agent[id].require_set[7] == []:
-                            for i in range(7, 0, -1):
-                                if agent[id].start_set[i] != [] and agent[id].end_set[i] != []:
-                                    end = agent[id].end_set[i][-1]
-                                    start = agent[id].start_set[i][-1]
-                                    task_type = i
+                        if agent[id].start_set[7] != []:  # 7 -> 8/9
+                            start = agent[id].start_set[7][-1]
+                            end = END8
+                            task_type = 7
                         else:
-                            require_table = agent[id].require_set[7][-1]  # [id, require1, require2, require]
-                            while len(require_table) <= 1:
-                                agent[id].require_set.pop()
-                                require_table = agent[id].require_set[7][-1]
-                            # sys.stderr.write(" ".join(str(require_table)) + "\n")
-                        #
-                        #     # 检查有没有
-                            if sum([len(agent[id].start_set[t]) for t in require_table[1:]]) > 0:  # 有的话 4 5 6 -> 7
-                                for i in range(len(require_table) - 1, 0, -1):  # TODO 可以优化一下 选择距离最近的哪一个
-                                    if agent[id].start_set[require_table[i]] != []:  # TODO 可以优化一下 选择距离最近的哪一个
-                                        start = agent[id].start_set[require_table[i]][-1]
-                                        end = require_table[0]
-                                        task_type = require_table[i]
+                        # 检查缺什么
+                            if agent[id].require_set[7] == []:
+                                for i in range(7, 0, -1):
+                                    if agent[id].start_set[i] != [] and agent[id].end_set[i] != []:
+                                        end = agent[id].end_set[i][-1]
+                                        start = agent[id].start_set[i][-1]
+                                        task_type = i
                                         break
-                                    # else:
-                                    #     sys.stderr.write(
-                                    #         "agent:" + str(id) + ":" + str(len(require_table) - 1) + ":" + str(
-                                    #             i) + "\n")
+                            else:
+                                require_table = agent[id].require_set[7][-1]  # [id, require1, require2, require]
+                                while len(require_table) <= 1:
+                                    agent[id].require_set.pop()
+                                    require_table = agent[id].require_set[7][-1]
+                                # sys.stderr.write(" ".join(str(require_table)) + "\n")
+                            #
+                            #     # 检查有没有
+                                if sum([len(agent[id].start_set[t]) for t in require_table[1:]]) > 0:  # 有的话 4 5 6 -> 7
+                                    for i in range(len(require_table) - 1, 0, -1):  # TODO 可以优化一下 选择距离最近的哪一个
+                                        if agent[id].start_set[require_table[i]] != []:  # TODO 可以优化一下 选择距离最近的哪一个
+                                            start = agent[id].start_set[require_table[i]][-1]
+                                            end = require_table[0]
+                                            task_type = require_table[i]
+                                            break
 
-                            else:  # 没有的话 下一层 1 2 3 -> 4 5 6
-                                if agent[id].require_set[require_table[1]] == []:
-                                    for i in range(7, 0, -1):
-                                        if agent[id].start_set[i] != [] and agent[id].end_set[i] != []:
-                                            end = agent[id].end_set[i][-1]
-                                            start = agent[id].start_set[i][-1]
-                                            task_type = i
-                                else:
-                                    require_table_456 = agent[id].require_set[require_table[1]][-1]  # 确定完成度最高的材料 [id, require1, require1]
-                                    for require_type in reversed(require_table[1:]):  # 在缺的材料中遍历
-                                        if agent[id].require_set[require_type] != []:
-                                            rt = agent[id].require_set[require_type][-1]
-                                            if len(rt) > 0 and len(rt) < len(require_table_456):
-                                                require_table_456 = rt
-                                    # if int(frame_id) > 49:
-                                    #     sys.stderr.write(str(id) + " ".join(str(require_table_456)) + "\n")
-                                    distance_A = 250
-                                    # sys.stderr.write(" ".join(str(require_table_456[-1])) + "\n")
-                                    # sys.stderr.write("Agent_id:" + str(id) + " ".join(str(workbench[require_table_456[-1]])) + "\n")
-                                    for i in range(len(workbench[require_table_456[-1]])):  # 需要划定范围
-                                        s = workbench[require_table_456[-1]][i][0]
-                                        tmp = distance_computed(float(state[s][1]), float(state[require_table_456[0]][1]),
-                                                                float(state[s][2]), float(state[require_table_456[0]][2]))
-                                        if tmp < distance_A:
-                                            distance_A = tmp
-                                            start = s
-                                    if start != -1:
-                                        end = require_table_456[0]
-                                        task_type = require_table_456[-1]
+                                else:  # 没有的话 下一层 1 2 3 -> 4 5 6
+                                    # sys.stderr.write(str(id) + ":" + " ".join(str(agent[id].require_set[require_table[1]])) + "\n")
+                                    if agent[id].require_set[require_table[1]] == []:
+                                        for i in range(7, 0, -1):
+                                            if agent[id].start_set[i] != [] and agent[id].end_set[i] != []:
+                                                end = agent[id].end_set[i][-1]
+                                                start = agent[id].start_set[i][-1]
+                                                task_type = i
+                                                break
+                                    else:
+                                        require_table_456 = agent[id].require_set[require_table[1]][-1]  # 确定完成度最高的材料 [id, require1, require1]
+                                        for require_type in reversed(require_table[1:]):  # 在缺的材料中遍历
+                                            if agent[id].require_set[require_type] != []:
+                                                rt = agent[id].require_set[require_type][-1]
+                                                if len(rt) > 0 and len(rt) < len(require_table_456):
+                                                    require_table_456 = rt
+                                        # if int(frame_id) > 49:
+                                        #     sys.stderr.write(str(id) + " ".join(str(require_table_456)) + "\n")
+                                        distance_A = 250
+                                        # sys.stderr.write(" ".join(str(require_table_456[-1])) + "\n")
+                                        # sys.stderr.write("Agent_id:" + str(id) + " ".join(str(workbench[require_table_456[-1]])) + "\n")
+                                        for i in range(len(workbench[require_table_456[-1]])):  # 需要划定范围
+                                            s = workbench[require_table_456[-1]][i][0]
+                                            tmp = distance_computed(float(state[s][1]), float(state[require_table_456[0]][1]),
+                                                                    float(state[s][2]), float(state[require_table_456[0]][2]))
+                                            if tmp < distance_A:
+                                                distance_A = tmp
+                                                start = s
+                                        if start != -1:
+                                            end = require_table_456[0]
+                                            task_type = require_table_456[-1]
+                    elif FLAG7[id] == 0:  # 工作模式2 专注生产
+                        # 专注自身的工作台  目前只针对地图1的编写
+                        for i in range(1, 8):
+                            if agent[id].require_set[i] != []:
+                                require_table = agent[id].require_set[i][-1]
+                                break
+                        distance_A = 250
+                        # sys.stderr.write(" ".join(str(require_table_456[-1])) + "\n")
+                        # sys.stderr.write("Agent_id:" + str(id) + " ".join(str(workbench[require_table_456[-1]])) + "\n")
+                        for i in range(len(workbench[require_table[-1]])):  # 需要划定范围
+                            s = workbench[require_table[-1]][i][0]
+                            tmp = distance_computed(float(state[s][1]), float(state[require_table[0]][1]),
+                                                    float(state[s][2]), float(state[require_table[0]][2]))
+                            if tmp < distance_A:
+                                distance_A = tmp
+                                start = s
+                        if start != -1:
+                            end = require_table[0]
+                            task_type = require_table[-1]
+                    elif FLAG7[id] == -1:  # 工作模式3 专注送货
+                        for i in range(7, 0, -1):
+                            if agent[id].start_set[i] != []:
+                                start = agent[id].start_set[i][-1]
+                                task_type = i
+                                end = 25  # map3
+                                break
+
                     agent[id].set_task(task_type, start, end)
                 if agent[id].task[1] != -1:
                     agent[id].go_to_workbench(agent[id].task[1], state[agent[id].task[1]][1:3], start=True)
